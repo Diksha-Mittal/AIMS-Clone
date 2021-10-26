@@ -134,10 +134,12 @@ BEGIN
 
     -- checking the cg criteria
     FOR student_batch IN 
-        SELECT * FROM student_database WHERE entry_number = %I;
+        EXECUTE format (
+            'SELECT * FROM student_database WHERE entry_number = %I'
+        );
     LOOP
         FOR batches IN 
-            SELECT * FROM %I
+            EXECUTE format ('SELECT * FROM %I')
         LOOP
             IF batches.year = student_batch.year AND batches.course = student_batch.course AND batches.branch = student_batch.branch THEN
                 IF batches.cg > student_batch.cg THEN
@@ -148,18 +150,16 @@ BEGIN
 
         -- if the batch doesnt exist
         IF (NOT EXISTS (
-            SELECT * 
-            FROM %I 
-            WHERE year = student_batch.year AND 
-            course = student_batch.course AND 
-            branch = student_batch.branch)) THEN
-            RAISE EXCEPTION ''Your batch is not allowed to register for this course'' USING ERRCODE = ''FATAL''
+            EXECUTE format(
+                'SELECT * FROM %I WHERE year = student_batch.year AND course = student_batch.course AND branch = student_batch.branch'))) 
+                THEN RAISE EXCEPTION 'Your batch is not allowed to register for this course' USING ERRCODE = 'FATAL'
         END IF;
     END LOOP;
 
     SELECT time_slots FROM course_offering WHERE course_id = NEW.course_id AND faculty_id = NEW.faculty_id AND semester = NEW.semester AND year = NEW.year INTO new_slots;
 
-    FOR courses IN SELECT * FROM %I
+    FOR courses IN 
+    EXECUTE format('SELECT * FROM %I')
     LOOP
         FOR courses_time_slot IN SELECT time_slot FROM course_offering WHERE course_id = courses.course_id
         LOOP
