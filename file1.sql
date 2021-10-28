@@ -160,3 +160,116 @@ BEGIN
 
 END
 $$ LANGUAGE plpgsql;
+
+
+CREATE OR REPLACE FUNCTION grade_uploading(
+    IN course_id varchar(10),
+    IN file_path varchar(1000)
+) RETURN VOID AS $$
+DECLARE
+    course_entry RECORD,
+    current_course_iterator RECORD,
+    store_data_temp RECORD
+    result varchar(15)
+
+BEGIN
+    CREATE TABLE student_grade(
+        entry_number varchar(15),
+        grade int
+    );
+
+    COPY student_grade FROM file_path WITH (FORMAT csv);
+    -- agr ye na chale to
+    -- \copy student_grade FROM file_path DELIMITER ',' CSV;
+
+    FOR course_entry IN student_grade
+    LOOP
+        FOR current_course_iterator IN 
+        EXECUTE format('student_current_courses_%I',course_entry.entry_number)
+        LOOP
+            IF current_course_iterator.course_id = course_id THEN
+                store_data_temp = current_course_iterator;
+                exit;
+            END IF;
+        END LOOP;
+
+        IF course_entry.grade < 5 THEN
+            result = 'Failed';
+        ELSE
+            result = 'Completed'
+        END IF;
+
+        EXECUTE format(
+            'INSERT INTO %I VALUES(%L,%L,%L,%L,%L,%L);', 'student_past_courses_' || course_entry.entry_number, store_data_temp.faculty_id, store_data_temp.course_id, store_data_temp.year, store_data_temp.semester, result, course_entry.grade
+        );
+
+        EXECUTE format('DELETE FROM %I WHERE course_id = course_id;','student_current_courses_' || course_entry.entry_number)
+       
+
+    END LOOP;
+
+END
+$$ LANGUAGE plpgsql;
+
+CREATE OR REPLACE FUNCTION report_generation(
+    IN entry_number varchar(15),
+    IN required_semester int,
+    IN required_year int,
+    OUT student_entry_number varchar(15),
+    OUT student_name varchar(200),
+    OUT report_semester int,
+    OUT report_year int,
+    OUT credits_completed int,
+    OUT sgpa int,
+    OUT cgpa int
+) RETURN void AS $$
+DECLARE
+    course_entry RECORD,
+    temp_credits int,
+    report_entry RECORD,
+    sgpa_numerator int
+
+BEGIN
+    student_entry_number = entry_number;
+    student_name = SELECT concat(first_name,' ',last_name) FROM student_database WHERE entry_number = student_entry_number;
+    report_semester = required_semester;
+    report_year = required_year;
+    credits_completed = 0;
+
+    CREATE TABLE student_report(
+        course_id varchar(10),
+        grade int,
+        credits int
+    );
+
+    FOR course_entry IN
+    EXECUTE format('student_past_courses_%I',entry_number)
+    LOOP
+        IF course_entry.semester=required_semester AND course_entry.year=required_year THEN
+
+            temp_credits=0;
+
+            IF course_entry.grade > 5 THEN
+                temp_credits = SELECT credits FROM course_catalog WHERE course_id=course_entry.course_id;
+                credits_completed = credits_completed + temp_credits;
+            END IF;
+
+            EXECUTE format(
+                'INSERT INTO student_report VALUES(%L, %L, %L);', course_entry.course_id, course_entry.grade, temp_credits
+            );
+
+        END IF; 
+    END LOOP;
+
+    sgpa_numerator=0;
+
+    FOR report_entry IN student_report
+    LOOP
+        sgpa_numerator = sgpa_numerator + report_entry.credits * report_entry.grade;
+    END LOOP;
+
+    sgpa = sgpa_numerator / credits_completed;
+
+    --cgpa store me se uthani h
+END 
+$$ LANGUAGE plpgsql;

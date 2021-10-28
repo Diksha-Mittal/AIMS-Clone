@@ -113,7 +113,7 @@ BEGIN
     total_credits := 0;
     -- this loop will count total_credits
     FOR student_course IN 
-        EXECUTE format('SELECT * FROM %I', 'student_course_table_' || current_user)
+        EXECUTE format('SELECT * FROM %I', 'student_current_courses_' || current_user)
     LOOP
         SELECT credits 
         FROM course_catalog 
@@ -124,26 +124,24 @@ BEGIN
     -- extracting maximum credit limit
     EXECUTE format (
         'SELECT maximum_credits_allowed INTO maximum_credit_limit FROM student_credit_info WHERE entry_number = %I;',
-        entry_number
+        current_user
     );
 
     -- checking if the limit is satisfied
     IF ((total_credits + NEW.credits) > maximum_credit_limit) THEN
-        RAISE EXCEPTION 'You have exceeded the maximum credits limit.' USING ERRCODE = ''FATAL''
+        RAISE EXCEPTION 'You have exceeded the maximum credits limit.' USING ERRCODE = 'FATAL'
     END IF;
 
     -- checking the cg criteria
     FOR student_batch IN 
-        EXECUTE format (
-            'SELECT * FROM student_database WHERE entry_number = %I'
-        );
+        EXECUTE format ('SELECT * FROM student_zzdatabase WHERE entry_number = %I', current_user)
     LOOP
         FOR batches IN 
-            EXECUTE format ('SELECT * FROM %I')
+            EXECUTE format ('SELECT * FROM %I', )
         LOOP
             IF batches.year = student_batch.year AND batches.course = student_batch.course AND batches.branch = student_batch.branch THEN
                 IF batches.cg > student_batch.cg THEN
-                    RAISE EXCEPTION 'You dont satisfy the cg criteria' USING ERRCODE = ''FATAL''
+                    RAISE EXCEPTION 'You dont satisfy the cg criteria' USING ERRCODE = 'FATAL'
                 END IF;
             END IF;
         END LOOP;
